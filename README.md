@@ -129,17 +129,13 @@ Placa: ESP32 DevKit M1. Los pines de I2C serán los mismos para los sensores que
 - Errores: `[<name>] ERR code=<n>`
 - 115200 baudios.
 
-### `tof_cf`
+El resto de datos iria como se muestra en el siguiente ejemplo: 
+
 - En cada frame nuevo (máx. 10 líneas/s): `[tof_cf] min_mm=850 valid=14` (`min_mm=-1` = sin objetivo, `valid` = número de zonas válidas de 16)
 - En error (una vez por cambio de código, máx. 1/s): `[tof_cf] ERR code=2`
-- No imprime nada más. El banner `FPF-LAB READY` lo imprime `main.cpp`, no esta librería.
 
-### `temp`
-- Una línea por lectura, una vez por segundo: `[temp] c=22.6875`
-- Si falla: `[temp] ERR code=<n>`, por ejemplo `[temp] ERR code=1` con la sonda desconectada.
 
-### IMU, Altímetro y Colisión inferior
-- Pendiente: no hay línea de ejemplo en la #31.
+
 
 ## Rules
 
@@ -158,6 +154,12 @@ Placa: ESP32 DevKit M1. Los pines de I2C serán los mismos para los sensores que
 - **No bloquea:** `update()` lanza la conversión y vuelve, sin `delay()`.
 - **Buffers fijos:** 9 bytes de memoria y 8 de código ROM.
 - **Valida los datos:** CRC y los 85 °C de arranque.
-- **Solo se toca** `fw/lib/DS18B20/` y el hueco de `temp` en `main.cpp`.
-# dron_firmware
- 
+- **Solo se toca** `fw/lib/DS18B20/` y el hueco de `temp` en `main.cpp`. 
+
+## Banner
+
+Al final del setup pondremos: 
+
+```
+fpf grupo 1 version 1.0 - lab ready
+```
