@@ -1,0 +1,134 @@
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      # Descargar el repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Instalar herramientas
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format cppcheck
+
+      # Comprobar formato C++
+      - name: Check code formatting
+        run: |
+          find fw -type f \( -name '*.cpp' -o -name '*.h' \) \
+            -print0 | xargs -0 -r clang-format --dry-run --Werror
+
+      # Analisis estatico
+      - name: Static analysis
+        run: |
+          cppcheck --enable=warning,style,performance,portability \
+            --error-exitcode=1 fw/src fw/lib
+
+      # Comprobar que no se utiliza delay()
+      - name: Check forbidden delays
+        run: |
+          if grep -rn 'delay(' fw/lib | grep -v 'setup-only'; then
+            echo "ERROR: delay() no permitido"
+            exit 1
+          fi
+
+
+
+  # COMPILACION DEL FIRMWARE ESP32
+  build:
+    name: build (${{ matrix.env }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        env: [esp32]
+
+    steps:
+      # Descargar el repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Instalar Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Instalar PlatformIO
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      # Compilar el firmware
+      - name: Build firmware
+        working-directory: fw
+        run: pio run -e esp32
+
+      # Guardar los archivos compilados
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32
+          path: |
+            fw/.pio/build/esp32/firmware.bin
+            fw/.pio/build/esp32/firmware.elf
+          if-no-files-found: error
+
+
+
+
+  # SIMULACION DEL FIRMWARE CON WOKWI
+  wokwi:
+    name: wokwi
+    needs: build
+    runs-on: ubuntu-latest
+
+    env:
+      WOKWI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-esp32
+          path: fw/.pio/build/esp32
+
+      # Comprobar si Wokwi esta disponible
+      - name: Check Wokwi configuration
+        id: check_wokwi
+        shell: bash
+        run: |
+          if [[ -f fw/wokwi.toml && \
+                -f fw/diagram.json && \
+                -n "$WOKWI_TOKEN" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Wokwi no configurado. Simulacion omitida."
+          fi
+
+      # Ejecutar simulacion
+      - name: Run Wokwi
+        if: steps.check_wokwi.outputs.enabled == 'true'
+        uses: wokwi/wokwi-ci-action@v1
+        with:
+          token: ${{ secrets.WOKWI_CLI_TOKEN }}
+          path: fw
+          expect_text: "FPF-LAB READY"
+
+
+
+
