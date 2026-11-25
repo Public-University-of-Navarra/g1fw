@@ -2,7 +2,6 @@
 #include <Wire.h>
 #include <fw_errors.h>
 
-
 static void setup_i2c() {
   Wire.begin(33, 32);
   // Llama aquí a la inicialización de tu multiplexor, por ejemplo:
