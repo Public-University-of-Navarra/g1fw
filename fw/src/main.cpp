@@ -1,11 +1,12 @@
 #include <Arduino.h>
-#include <fw_errors.h>
 #include <Wire.h>
+#include <fw_errors.h>
 
-void setup_i2c() {
-    Wire.begin(33, 32);
-    // Llama aquí a la inicialización de tu multiplexor, por ejemplo:
-    // mux.begin();
+
+static void setup_i2c() {
+  Wire.begin(33, 32);
+  // Llama aquí a la inicialización de tu multiplexor, por ejemplo:
+  // mux.begin();
 }
 
 static void setup_imu() {}
@@ -38,7 +39,7 @@ void setup() {
   setup_temp();
   setup_cam();
   // ...
-  Serial.println("FPF-LAB READY");   // must be the LAST line of setup()
+  Serial.println("FPF-LAB READY");  // must be the LAST line of setup()
 }
 
 void loop() {
