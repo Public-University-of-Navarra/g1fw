@@ -1,28 +1,32 @@
 # Firmware FPF-LAB
+## Device
+
+El microcontrolador selecionado es el ESP32 DevKitM1
 
 ## Components
 
-### IMU
+### IMU (imu, ICM-40609-D)
 
-6 datos de los grados de libertad:
-- 3 aceleraciones que las pasaremos en g (número de veces la velocidad). En formato float (4 bytes).
-- 3 velocidades de giro. representadas en º/s. En formato float (4 bytes).
+ICM-40609-D de TDK InvenSense: acelerómetro y giróscopo de 3 ejes. Carpeta: `fw/lib/imu/`. I2C por el canal 5 del multiplexor, dirección 0x68 (AD0 en el GPIO26, que imu_begin() pone a 0).
 
-Los 6 datos serán proporcionados por una única función que lee los registros correspondientes de la IMU y los esribe en la dirección de memoria indicada:
+Configuración fija, con constantes al inicio de imu.cpp: acelerómetro ±8 g, giróscopo ±2000 °/s.
 
 ```cpp
-int  get_state( float **target);
+typedef struct {
+    float ax, ay, az;   // aceleración en g (1 g = 9,81 m/s², la aceleración de la gravedad)
+    float gx, gy, gz;   // velocidad de giro en °/s
+} imu_data_t;
+
+int  imu_begin();                     // 0 = OK, si no, código de error. Una vez en setup()
+int  imu_update();                    // en cada loop(); nunca espera. 0 también si no hay dato nuevo
+bool imu_new_data();                  // true si el último imu_update() leyó un dato nuevo
+int  imu_get_state(imu_data_t *out);  // copia en *out el último dato válido. FW_ERR_BAD_PARAM si out es NULL
 ```
 
-Regresa un int con 0 si no ha habido ningún error o el código de error en caso de que sí.
-
-Para inicializar la IMU usaremos una función que también devuelve un int para el manejo de error. Como la IMU tiene varias configuraciones le pasaremos un int indicando que configuración vamos a usar. En caso de indicar una configuración que no existe devolverá un error.
-
-```cpp
-int  initialize(int config);
-```
 
 ### Altímetro
+
+Libreria ubicada en `fw/lib/altimeter`
 
 Hay disponibilidad de 3 sensores que pueden funcionar como altímetro, la primera opción será utilizar el SEN0667 (BMP581) por sus mejores prestaciones para nuestra aplicación.
 
@@ -67,11 +71,13 @@ Una zona es válida solo si el sensor indica target_status 5 o 9 y la distancia 
 
 ### Colisión inferior (VL53L1X)
 
+libreria ubicada en `fw/lib/tof_ci`
+
 ```cpp
-int       vl53l1x_begin();        // 0 = OK, otro número = error
-int       vl53l1x_update();       // llamar en cada loop(); nunca espera
-bool      vl53l1x_new_data();     // true si hay una medida nueva desde la última vez que se preguntó
-uint16_t  vl53l1x_get_mm();       // última distancia válida, en mm
+int       tof_ci_begin();        // 0 = OK, otro número = error
+int       tof_ci_update();       // llamar en cada loop(); nunca espera
+bool      tof_ci_new_data();     // true si hay una medida nueva desde la última vez que se preguntó
+uint16_t  tof_ci_get_mm();       // última distancia válida, en mm
 ```
 
 Errores: situación de no encontrado (el sensor no contesta por I2C o contesta con un identificador distinto de 0xEACC), fallo de comunicación (falla una lectura I2C a mitad de funcionamiento) y dato erróneo (el sensor contesta, pero el estado no es 9 o la distancia está fuera de 0 a 4000 mm).
@@ -79,15 +85,33 @@ Errores: situación de no encontrado (el sensor no contesta por I2C o contesta c
 ### Sensor de temperatura (`temp`, DS18B20)
 
 Sonda DS18B20 (DFR0198) por 1-Wire, una sola en el bus. Librería en `fw/lib/DS18B20/` (`OneWireBus` + `DS18B20`). Solo para ESP32.
+``` cpp
+int   temp_begin();      // 0 = OK, si no, código de error. Una vez en setup()
+int   temp_update();     // en cada loop(); nunca espera. 0 también si aún no hay lectura nueva
+bool  temp_new_data();   // true si el último temp_update() dejó una lectura nueva
+float temp_get_c();      // última temperatura válida en °C (NAN si todavía no hay ninguna) 
+```
+
+### Cámara
+
+Libreria ubicada en `fw/lib/cam`
 
 ```cpp
-OneWireBus bus(4);       // GPIO de la línea DQ
-DS18B20    sonda(bus);
-
-DS18B20::Error begin(uint8_t resolucion = 12);  // 0 si va bien
-bool  update();          // en cada loop(); no espera; true cuando hay lectura nueva
-float temperatura();     // última temperatura en °C (NAN si ha fallado)
+const unsigned int char *CAM_get_photo(void);
 ```
+
+La función devuelve la imagen que está en memoria. 
+
+Devuelve un error si la imagen no ha podido ser adquirida.
+
+### Multiplexor adafruit2717 TCA9548A
+
+```cpp
+    int mult_begin(void) //Inicializa y comprueba la comunicación con el multiplexor. Devuelve el código de error.
+    int mult_select(int channel); //Recibe de argumento el canal que se quiere seleccionar (0-7) y devuelve el código de error.
+    int mult_disable_all(void); // Desactiva todos los canales. devuelve el código de error. 
+```
+
 
 ## Error codes
 
@@ -95,12 +119,14 @@ Propuesta aceptada de códigos de error:
 
 | Código | Nombre | Significado |
 |---|---|---|
-| 0 | `ERR_OK` | correcto |
-| 1 | `ERR_NOT_FOUND` | dispositivo no encontrado en el bus I2C / ID incorrecto |
-| 2 | `ERR_TIMEOUT` | el dispositivo no responde / frame no listo a tiempo |
-| 3 | `ERR_BAD_DATA` | el sensor devolvió datos inválidos o fuera de rango |
-| 4 | `ERR_BAD_PARAM` | argumento inválido (p. ej. índice de zona) |
-| 5 | `ERR_NOT_INIT` | no se llamó a `*_begin()` o falló |
+| 0 | `FW_ERR_OK` | correcto |
+| 1 | `FW_ERR_NOT_FOUND` | dispositivo no encontrado en el bus I2C / ID incorrecto |
+| 2 | `FW_ERR_TIMEOUT` | el dispositivo no responde / frame no listo a tiempo |
+| 3 | `FW_ERR_BAD_DATA` | el sensor devolvió datos inválidos o fuera de rango |
+| 4 | `FW_ERR_BAD_PARAM` | argumento inválido (p. ej. índice de zona) |
+| 5 | `FW_ERR_NOT_INIT` | no se llamó a `*_begin()` o falló |
+
+Estos errores estarán recogidos en el archivo fw/lib/errores/fw_errors.h 
 
 ## Pin mapping
 
@@ -108,19 +134,21 @@ Placa: ESP32 DevKit M1. Los pines de I2C serán los mismos para los sensores que
 
 | component | signal | Arduino pin |
 |---|---|---|
-| Bus I2C | SCL | GPIO32 |
-| Bus I2C | SDA | GPIO33 |
-| IMU | SCL5, SDA5 | canal 5 del multiplexor |
-| Altímetro | I2C | canales 0, 2 y 3 del multiplexor |
+| Bus I2C (`mult`)| SCL | GPIO32 |
+| Bus I2C (`mult`)| SDA | GPIO33 |
+| IMU (`IMU`)| SCL5, SDA5 | canal 5 del multiplexor |
+| Altímetro (`altimeter`)| I2C | canales 0, 2 y 3 del multiplexor (3 sensores diferentes) |
 | Colisión frontal (`tof_cf`) | SDA7, SCL7 | canal 7 del multiplexor |
 | Colisión frontal (`tof_cf`) | LPn | GPIO14 |
-| Colisión inferior | I2C | canal 6 del multiplexor |
+| Colisión inferior (`tof_ci`)| I2C | canal 6 del multiplexor |
+| Colisión inferior (`tof_ci`)| XSHUT| GPIO25|
 | Temperatura (`temp`) | DQ (amarillo), con 4,7 kΩ a 3V3 | GPIO4 |
 | Temperatura (`temp`) | VDD (rojo) | 3V3 |
 | Temperatura (`temp`) | GND (negro) | GND |
+|Cámara (`cam`)| Imagen analog| J15 (DSP)| 
 
 - SDA: I2C por defecto, compartido con otros sensores I2C (IMU, TOF inferior...).
-- LPn: reservado: habilita/deshabilita el I2C del sensor. Necesario para cambiar la dirección I2C si el TOF inferior comparte la 0x29.
+- LPn: reservado: habilita/deshabilita el I2C del sensor.
 
 ## Serial format
 
@@ -131,11 +159,13 @@ Placa: ESP32 DevKit M1. Los pines de I2C serán los mismos para los sensores que
 
 El resto de datos iria como se muestra en el siguiente ejemplo: 
 
-- En cada frame nuevo (máx. 10 líneas/s): `[tof_cf] min_mm=850 valid=14` (`min_mm=-1` = sin objetivo, `valid` = número de zonas válidas de 16)
-- En error (una vez por cambio de código, máx. 1/s): `[tof_cf] ERR code=2`
-
-
-
+- En cada trama:
+  -  `[tof_cf] min_mm=850`
+  -  `[IMU] ax_g=0.5 ay_g=0.1 az_g=0.8 gx_deg_s=20 gy_deg_s=20 gz_deg_s=20`
+  -  `[tof_ci] min_mm=850`
+  -  `[altimeter] altura_m: 1.5`
+  -  `[temperatura] temperatura_C= 25`
+- En error: `[<name>] ERR code=2`
 
 ## Rules
 
@@ -156,10 +186,3 @@ El resto de datos iria como se muestra en el siguiente ejemplo:
 - **Valida los datos:** CRC y los 85 °C de arranque.
 - **Solo se toca** `fw/lib/DS18B20/` y el hueco de `temp` en `main.cpp`. 
 
-## Banner
-
-Al final del setup pondremos: 
-
-```
-fpf grupo 1 version 1.0 - lab ready
-```
