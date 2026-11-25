@@ -7,7 +7,7 @@ static void setup_i2c() {
   // Llama aquí a la inicialización de tu multiplexor, por ejemplo:
   // mux.begin();
 }
-static void setup_mult(){}
+static void setup_mult() {}
 static void loop_mult() {}
 
 static void setup_imu() {}
@@ -17,7 +17,7 @@ static void setup_tof_front() {}
 static void loop_tof_front() {}
 
 static void setup_tof_inf() {}
-static void loop_tof_inf(){}
+static void loop_tof_inf() {}
 
 static void setup_bar() {}
 static void loop_bar() {}
@@ -52,6 +52,5 @@ void loop() {
   loop_bar();
   loop_temp();
   loop_camera();
-  
   // ...
 }
