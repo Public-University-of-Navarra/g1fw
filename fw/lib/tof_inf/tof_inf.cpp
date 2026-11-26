@@ -65,10 +65,6 @@ int tof_inf_update() {
   return FW_ERR_OK;
 }
 
-bool tof_inf_new_data() {
-  return s_new_data;
-}
+bool tof_inf_new_data() { return s_new_data; }
 
-uint16_t tof_inf_get_mm() {
-  return s_distance_mm;
-}
+uint16_t tof_inf_get_mm() { return s_distance_mm; }
