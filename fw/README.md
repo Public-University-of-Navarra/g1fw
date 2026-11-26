@@ -116,48 +116,55 @@ Conexión (esquema de fabricación, commit d6fcc0c, conector J15 de la LCDK):
 |---|---|---|---|
 | UART TX | GPIO18 | J15 pin 17 (UART1_RXD) | ESP32 → DSP |
 | UART RX | GPIO19 | J15 pin 19 (UART1_TXD) | DSP → ESP32 |
-| DSP_SYNC | GPIO27 | J15 pin 16 (GPIO8[12]) | Pulso de la DSP al empezar cada imagen; interrupción en el ESP32 |
+| DSP_SYNC | GPIO27 | J15 pin 16 (GPIO8[12]) | Reserva (pulso por imagen, si hiciera falta más precisión) |
 | DSP_GPIO | GPIO13 | J15 pin 20 (GPIO8[10]) | Reserva |
 
 En la LCDK hay que puentear R206 y R209 para que la UART llegue a la DSP. `Serial2.begin(115200, SERIAL_8N1, 19, 18)`.
 
-Protocolo DSP → ESP32: una línea ASCII por imagen, con el mismo estilo que la salida serie, de 128 caracteres como mucho:
+Protocolo DSP → ESP32: el dron tiene que atravesar puertas marcadas con LEDs rojos. La DSP busca la puerta en la imagen y manda una línea ASCII por imagen, de 32 caracteres como mucho:
 
 ```
-[dsp] n=<imagen> <clave>=<valor> ...
+[dsp] t=<ms> cmd=<orden>
 ```
 
-El dron tiene que atravesar puertas marcadas con LEDs rojos. La DSP busca la puerta en la imagen y manda hacia dónde tiene que moverse el dron:
+- `t`: marca de tiempo de la imagen, en ms desde que arrancó la DSP.
+- `cmd`: una de estas 7 órdenes:
 
-```
-[dsp] n=1234 puerta=1 dx=-35 dy=10 dz=60
-```
-
-| Clave | Valores | Significado |
+| `cmd` | Código | Significado |
 |---|---|---|
-| `n` | 0.. | Número de imagen, el mismo que marcó con el pulso de DSP_SYNC |
-| `puerta` | 0 o 1 | 1 si ve la puerta; con 0, `dx`, `dy` y `dz` valen 0 |
-| `dx` | -100..100 | Negativo: la puerta está a la izquierda; positivo, a la derecha. 0 = centrada |
-| `dy` | -100..100 | Negativo: abajo; positivo: arriba |
-| `dz` | -100..100 | Positivo: avanzar; negativo: retroceder (la puerta se ve demasiado cerca) |
+| `quieto` | 0 | Centrado, o no se ve la puerta |
+| `arriba` | 1 | La puerta está por encima |
+| `abajo` | 2 | La puerta está por debajo |
+| `izquierda` | 3 | La puerta está a la izquierda |
+| `derecha` | 4 | La puerta está a la derecha |
+| `adelante` | 5 | Centrado y lejos: avanzar |
+| `atras` | 6 | Demasiado cerca: retroceder |
 
-Se mandan números con signo en vez de solo "izquierda/derecha" para que el ESP32 sepa cuánto corregir; el ESP32 decide los umbrales.
+Ejemplo: `[dsp] t=15320 cmd=izquierda`.
 
 ```cpp
+typedef enum {
+  CAMERA_QUIETO = 0,
+  CAMERA_ARRIBA = 1,
+  CAMERA_ABAJO = 2,
+  CAMERA_IZQUIERDA = 3,
+  CAMERA_DERECHA = 4,
+  CAMERA_ADELANTE = 5,
+  CAMERA_ATRAS = 6
+} camera_cmd_t;
+
 typedef struct {
-  uint32_t n;         // numero de imagen
-  int64_t t_sync_us;  // esp_timer_get_time() del pulso DSP_SYNC de esa imagen
-  bool puerta;        // true si la DSP ve la puerta
-  int8_t dx, dy, dz;  // -100..100: derecha+, arriba+, avanzar+
+  uint32_t t_ms;      // marca de tiempo de la DSP
+  int64_t t_rx_us;    // esp_timer_get_time() al recibir la linea en el ESP32
+  camera_cmd_t cmd;   // orden de la DSP
 } camera_result_t;
 
-int  camera_begin();                          // Serial2 e interrupcion de DSP_SYNC. Una vez en setup()
+int  camera_begin();                          // Serial2. Una vez en setup()
 int  camera_update();                         // lee lo que haya en la UART sin esperar
 bool camera_new_data();                       // true si el ultimo update() completo una linea valida
 int  camera_get_result(camera_result_t* out); // FW_ERR_BAD_PARAM si out es NULL, FW_ERR_NO_DATA si aun no hay
 ```
 
-- La interrupción de DSP_SYNC (`IRAM_ATTR`) solo guarda `esp_timer_get_time()` y sube un contador.
 - `camera_update()` acumula bytes en un búfer fijo y solo publica líneas completas y bien formadas; una línea demasiado larga o mal formada se descarta con `FW_ERR_BAD_DATA`.
 
 ### Multiplexor adafruit2717 TCA9548A
@@ -208,7 +215,7 @@ Placa: ESP32 DevKit M1. Los pines de I2C serán los mismos para los sensores que
 | Temperatura (`temp`) | GND (negro) | GND |
 | Cámara (`camera`) | UART TX → DSP | GPIO18 |
 | Cámara (`camera`) | UART RX ← DSP | GPIO19 |
-| Cámara (`camera`) | DSP_SYNC | GPIO27 (entrada con interrupción) |
+| Cámara (`camera`) | DSP_SYNC | GPIO27 (reserva) |
 | Cámara (`camera`) | DSP_GPIO | GPIO13 (reserva) |
 
 - SDA: I2C por defecto, compartido con otros sensores I2C (IMU, TOF inferior...).
@@ -229,7 +236,7 @@ El resto de datos iria como se muestra en el siguiente ejemplo:
   -  `[tof_inf] min_mm=850`
   -  `[bar] altura_m=1.5 pressure_hpa=1012.8`
   -  `[temp] temperatura_C=25`
-  -  `[camera] n=1234 puerta=1 dx=-35 dy=10 dz=60`
+  -  `[camera] t=15320 cmd=izquierda`
 - En error: `[<name>] ERR code=2`
 
 ## Ejecución con FreeRTOS
