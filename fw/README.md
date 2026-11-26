@@ -17,6 +17,8 @@ lib_deps =
 
 ### IMU (imu, ICM-40609-D)
 
+Se intenta montar el chip en la placa (U502); si no se puede, se usa la placa de desarrollo en J501. Los dos van al mismo canal y dirección, así que el código es el mismo.
+
 ICM-40609-D de TDK InvenSense: acelerómetro y giróscopo de 3 ejes. Carpeta: `fw/lib/imu/`. I2C por el canal 5 del multiplexor, dirección 0x68 (AD0 en el GPIO26, que imu_begin() pone a 0).
 
 Configuración fija, con constantes al inicio de imu.cpp: acelerómetro ±8 g, giróscopo ±2000 °/s.
@@ -104,28 +106,66 @@ bool  temp_new_data();   // true si el último temp_update() dejó una lectura n
 float temp_get_c();      // última temperatura válida en °C (NAN si todavía no hay ninguna)
 ```
 
-### Cámara (`camera`)
+### Cámara (`camera`, enlace con la DSP)
 
-Librería ubicada en `fw/lib/camera/`.
+La cámara no llega al ESP32: su vídeo entra en la DSP (LCDK C6748, RCA J9), que hace el procesado de imagen. El ESP32 recibe **solo el resultado** de cada imagen por UART y hace el resto del procesamiento. Librería en `fw/lib/camera/`; el firmware de la DSP va en `dsp/`.
 
-La señal de vídeo analógica de la cámara entra en el DSP por J9 (RCA). El DSP debe entregar los frames digitales al ESP32. **Pendiente de confirmar con el esquema y el modelo del DSP:** interfaz digital DSP → ESP32 (SPI, UART u otra), GPIOs, formato de datos y tamaño máximo de frame. J9 no es un pin del ESP32. No se debe dar por cerrada la integración hasta documentar estos datos.
+Conexión (esquema de fabricación, commit d6fcc0c, conector J15 de la LCDK):
 
-```cpp
-int camera_begin();
-int camera_update();
-int camera_get_frame(uint8_t* buffer, size_t buffer_size);
-int camera_get_frame_size(size_t& size);
-int camera_get_resolution(uint32_t& width, uint32_t& height);
-int camera_get_signal_status(bool& signal_detected);
+| Señal | ESP32 | DSP | Uso |
+|---|---|---|---|
+| UART TX | GPIO18 | J15 pin 17 (UART1_RXD) | ESP32 → DSP |
+| UART RX | GPIO19 | J15 pin 19 (UART1_TXD) | DSP → ESP32 |
+| DSP_SYNC | GPIO27 | J15 pin 16 (GPIO8[12]) | Reserva (pulso por imagen, si hiciera falta más precisión) |
+| DSP_GPIO | GPIO13 | J15 pin 20 (GPIO8[10]) | Reserva |
+
+En la LCDK hay que puentear R206 y R209 para que la UART llegue a la DSP. `Serial2.begin(115200, SERIAL_8N1, 19, 18)`.
+
+Protocolo DSP → ESP32: el dron tiene que atravesar puertas marcadas con LEDs rojos. La DSP busca la puerta en la imagen y manda una línea ASCII por imagen, de 32 caracteres como mucho:
+
+```
+[dsp] t=<ms> cmd=<orden>
 ```
 
-- `camera_begin()`: inicializa la interfaz y los búferes; se llama una vez en `setup()`.
-- `camera_update()`: comprueba los datos disponibles y el fin de transferencia DMA, si la interfaz lo utiliza. Avanza la recepción sin esperar y publica únicamente frames completos y válidos. Devuelve `FW_ERR_OK` también cuando todavía no hay un frame nuevo.
-- `camera_get_frame(...)`: copia inmediatamente el último frame completo al búfer del llamante, sin esperar a otro frame ni aceptar un timeout. Devuelve `FW_ERR_NO_DATA` si aún no hay frame válido y `FW_ERR_BAD_PARAM` si el puntero es nulo o el búfer es insuficiente.
-- `camera_get_frame_size(...)` y `camera_get_resolution(...)`: devuelven el tamaño en bytes y las dimensiones del último frame completo; `FW_ERR_NO_DATA` si todavía no existe.
-- `camera_get_signal_status(...)`: devuelve el último estado conocido de la señal, sin esperar.
+- `t`: marca de tiempo de la imagen, en ms desde que arrancó la DSP.
+- `cmd`: una de estas 7 órdenes:
 
-Los getters no inician transferencias ni modifican el frame almacenado. Se utilizarán búferes de capacidad fija y se validarán las longitudes antes de copiar datos. Todas las funciones devuelven uno de los códigos de error definidos en `fw/lib/common/fw_errors.h`.
+| `cmd` | Código | Significado |
+|---|---|---|
+| `quieto` | 0 | Centrado, o no se ve la puerta |
+| `arriba` | 1 | La puerta está por encima |
+| `abajo` | 2 | La puerta está por debajo |
+| `izquierda` | 3 | La puerta está a la izquierda |
+| `derecha` | 4 | La puerta está a la derecha |
+| `adelante` | 5 | Centrado y lejos: avanzar |
+| `atras` | 6 | Demasiado cerca: retroceder |
+
+Ejemplo: `[dsp] t=15320 cmd=izquierda`.
+
+```cpp
+typedef enum {
+  CAMERA_QUIETO = 0,
+  CAMERA_ARRIBA = 1,
+  CAMERA_ABAJO = 2,
+  CAMERA_IZQUIERDA = 3,
+  CAMERA_DERECHA = 4,
+  CAMERA_ADELANTE = 5,
+  CAMERA_ATRAS = 6
+} camera_cmd_t;
+
+typedef struct {
+  uint32_t t_ms;      // marca de tiempo de la DSP
+  int64_t t_rx_us;    // esp_timer_get_time() al recibir la linea en el ESP32
+  camera_cmd_t cmd;   // orden de la DSP
+} camera_result_t;
+
+int  camera_begin();                          // Serial2. Una vez en setup()
+int  camera_update();                         // lee lo que haya en la UART sin esperar
+bool camera_new_data();                       // true si el ultimo update() completo una linea valida
+int  camera_get_result(camera_result_t* out); // FW_ERR_BAD_PARAM si out es NULL, FW_ERR_NO_DATA si aun no hay
+```
+
+- `camera_update()` acumula bytes en un búfer fijo y solo publica líneas completas y bien formadas; una línea demasiado larga o mal formada se descarta con `FW_ERR_BAD_DATA`.
 
 ### Multiplexor adafruit2717 TCA9548A
 
@@ -173,8 +213,10 @@ Placa: ESP32 DevKit M1. Los pines de I2C serán los mismos para los sensores que
 | Temperatura (`temp`) | DQ (amarillo), con 4,7 kΩ a 3V3 | GPIO4 |
 | Temperatura (`temp`) | VDD (rojo) | 3V3 |
 | Temperatura (`temp`) | GND (negro) | GND |
-| Cámara (`camera`) | Entrada de vídeo analógica al DSP | J9 (RCA del DSP; no es GPIO del ESP32) |
-| Cámara (`camera`) | Interfaz digital DSP → ESP32 | Pendiente de confirmar: bus y GPIOs |
+| Cámara (`camera`) | UART TX → DSP | GPIO18 |
+| Cámara (`camera`) | UART RX ← DSP | GPIO19 |
+| Cámara (`camera`) | DSP_SYNC | GPIO27 (reserva) |
+| Cámara (`camera`) | DSP_GPIO | GPIO13 (reserva) |
 
 - SDA: I2C por defecto, compartido con otros sensores I2C (IMU, TOF inferior...).
 - LPn: reservado: habilita/deshabilita el I2C del sensor.
@@ -194,12 +236,43 @@ El resto de datos iria como se muestra en el siguiente ejemplo:
   -  `[tof_inf] min_mm=850`
   -  `[bar] altura_m=1.5 pressure_hpa=1012.8`
   -  `[temp] temperatura_C=25`
-  -  `[camera] frame=1 w=320 h=240 bytes=76800` (ejemplo ilustrativo de un frame completo; dimensiones y tamaño reales según el formato recibido).
+  -  `[camera] t=15320 cmd=izquierda`
 - En error: `[<name>] ERR code=2`
+
+## Ejecución con FreeRTOS
+
+El firmware corre sobre FreeRTOS (el que trae el ESP32 con Arduino). El reparto sale del documento de sincronización del Grupo 1: el I2C es un solo bus compartido por cuatro sensores a través del multiplexor, y los sensores no tienen pines de interrupción conectados, así que el ESP32 tiene que preguntarles si tienen dato.
+
+| Tarea | Núcleo | Prioridad | Qué hace |
+|---|---|---|---|
+| `i2c` | 1 | 3 | La **única** que usa `Wire` y el multiplexor. Llama sin parar a `loop_tof_front()`, `loop_tof_inf()`, `loop_imu()`, `loop_bar()` y `loop_mult()`, en ese orden, y cede 1 ms en cada vuelta. |
+| `temp` | 0 | 1 | Llama a `loop_temp()` cada 50 ms. La sonda va por 1-Wire en su propio pin y no comparte bus con nadie. |
+| `loop()` de Arduino | 1 | 1 | `loop_camera()`: lee la UART de la DSP. |
+
+Reglas que salen de este reparto:
+
+- **Una sola tarea en el I2C.** Como solo la tarea `i2c` toca el bus, `mult_select()` + transferencia nunca se mezclan con las de otro sensor y no hace falta mutex. Ninguna otra tarea puede llamar a funciones I2C.
+- **Cada componente se llama solo desde su tarea.** Sus `begin()` van en `setup()`, antes de crear las tareas; después, `update()` y los getters solo desde su tarea.
+- **`update()` sigue sin esperar.** Cada librería decide con `millis()` si le toca medir y, si no, vuelve. Así un sensor lento no retrasa a los ToF. No se usa `delay()` ni `vTaskDelay()` dentro de `fw/lib`.
+- **I2C a 400 kHz** (`Wire.setClock(400000)`, el máximo del TCA9548A).
+
+### Frecuencia de cada sensor
+
+Se mide más a menudo lo que importa para no chocar. Cada librería lleva su periodo como constante al inicio de su `.cpp`.
+
+| Componente | Periodo | Por qué |
+|---|---|---|
+| `tof_front` | 33 ms (30 Hz, 4x4 zonas) | Colisión frontal: lo más urgente |
+| `tof_inf` | 20 ms (50 Hz) | Colisión inferior y altura cerca del suelo |
+| `imu` | 10 ms (100 Hz) | Actitud del dron |
+| `bar` | 40 ms (25 Hz) | Altura; modo forzado, sin filtro IIR |
+| `temp` | 5 s | La temperatura cambia despacio; la conversión ya tarda 750 ms |
+
+La salida serie de cada componente se limita a una línea cada 100 ms como mucho, aunque lea más rápido; si no, a 115200 baudios el puerto se satura.
 
 ## Reglas
 
-- **No bloqueante:** sin `delay()`. Las esperas usan `millis()` y retornan. Solo se permiten esperas necesarias dentro de las funciones `*_begin()`, llamadas desde `setup()`. Cada `delay()` permitido debe llevar el comentario `// setup-only` en la misma línea, por ejemplo: `delay(10);  // setup-only`. El job `lint` de CI rechaza cualquier `delay(` en `fw/lib/` que no tenga esa marca.
+- **No bloqueante:** sin `delay()` ni `vTaskDelay()` en `fw/lib`. Las esperas usan `millis()` y retornan. Solo se permiten esperas necesarias dentro de las funciones `*_begin()`, llamadas desde `setup()`. Cada `delay()` permitido debe llevar el comentario `// setup-only` en la misma línea, por ejemplo: `delay(10);  // setup-only`. El job `lint` de CI rechaza cualquier `delay(` en `fw/lib/` que no tenga esa marca.
 - **Búferes acotados:** arrays de tamaño fijo; nunca se escribe más allá del final.
 - **Validar la entrada:** comprobar longitudes y valores antes de usar datos de un sensor.
 - **Solo tu carpeta:** cada pareja solo cambia `fw/lib/<name>/` y su hueco en `main.cpp`.
