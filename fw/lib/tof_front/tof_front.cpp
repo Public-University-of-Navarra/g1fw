@@ -34,12 +34,9 @@ uint16_t g_zones_mm[kGridRows][kGridCols] = {};
 uint16_t g_min_mm = TOF_FRONT_NO_TARGET;
 
 uint16_t g_center_dist_mm = 1500;
-int16_t g_approach_step_mm =
-    -45;  // Acercamiento progresivo hacia obstáculo frontal
+int16_t g_approach_step_mm = -45;  // Acercamiento progresivo hacia obstáculo frontal
 
-bool is_valid_distance_mm(uint16_t mm) {
-  return mm >= kMinValidMm && mm <= kMaxValidMm;
-}
+bool is_valid_distance_mm(uint16_t mm) { return mm >= kMinValidMm && mm <= kMaxValidMm; }
 
 void recompute_min_mm() {
   uint16_t current_min = TOF_FRONT_NO_TARGET;
@@ -55,12 +52,10 @@ void recompute_min_mm() {
 }
 
 void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
-  int32_t next_center =
-      static_cast<int32_t>(g_center_dist_mm) + g_approach_step_mm;
+    int32_t next_center = static_cast<int32_t>(g_center_dist_mm) + g_approach_step_mm;
   if (next_center <= 260) {
     next_center = 260;
-    g_approach_step_mm =
-        60;  // Simula maniobra/evasión alejándose del obstáculo
+        g_approach_step_mm = 60;  // Simula maniobra/evasión alejándose del obstáculo
   } else if (next_center >= 1800) {
     next_center = 1800;
     g_approach_step_mm = -45;  // Vuelve a avanzar en espacio interior
@@ -76,8 +71,7 @@ void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
         continue;
       }
 
-      int32_t zone_mm =
-          static_cast<int32_t>(g_center_dist_mm) + kInteriorOffsetsMm[r][c];
+      int32_t zone_mm = static_cast<int32_t>(g_center_dist_mm) + kInteriorOffsetsMm[r][c];
       if (zone_mm < static_cast<int32_t>(kMinValidMm)) {
         zone_mm = kMinValidMm;
       } else if (zone_mm > static_cast<int32_t>(kMaxValidMm)) {
