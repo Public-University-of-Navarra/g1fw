@@ -127,13 +127,28 @@ Protocolo DSP → ESP32: una línea ASCII por imagen, con el mismo estilo que la
 [dsp] n=<imagen> <clave>=<valor> ...
 ```
 
-`n` es el número de imagen, el mismo que la DSP marcó con el pulso de DSP_SYNC. **Pendiente:** las claves del resultado del procesado de imagen.
+El dron tiene que atravesar puertas marcadas con LEDs rojos. La DSP busca la puerta en la imagen y manda hacia dónde tiene que moverse el dron:
+
+```
+[dsp] n=1234 puerta=1 dx=-35 dy=10 dz=60
+```
+
+| Clave | Valores | Significado |
+|---|---|---|
+| `n` | 0.. | Número de imagen, el mismo que marcó con el pulso de DSP_SYNC |
+| `puerta` | 0 o 1 | 1 si ve la puerta; con 0, `dx`, `dy` y `dz` valen 0 |
+| `dx` | -100..100 | Negativo: la puerta está a la izquierda; positivo, a la derecha. 0 = centrada |
+| `dy` | -100..100 | Negativo: abajo; positivo: arriba |
+| `dz` | -100..100 | Positivo: avanzar; negativo: retroceder (la puerta se ve demasiado cerca) |
+
+Se mandan números con signo en vez de solo "izquierda/derecha" para que el ESP32 sepa cuánto corregir; el ESP32 decide los umbrales.
 
 ```cpp
 typedef struct {
   uint32_t n;         // numero de imagen
   int64_t t_sync_us;  // esp_timer_get_time() del pulso DSP_SYNC de esa imagen
-  // resultado del procesado: pendiente de definir con la DSP
+  bool puerta;        // true si la DSP ve la puerta
+  int8_t dx, dy, dz;  // -100..100: derecha+, arriba+, avanzar+
 } camera_result_t;
 
 int  camera_begin();                          // Serial2 e interrupcion de DSP_SYNC. Una vez en setup()
@@ -214,7 +229,7 @@ El resto de datos iria como se muestra en el siguiente ejemplo:
   -  `[tof_inf] min_mm=850`
   -  `[bar] altura_m=1.5 pressure_hpa=1012.8`
   -  `[temp] temperatura_C=25`
-  -  `[camera] n=1` y el resultado de esa imagen (claves pendientes).
+  -  `[camera] n=1234 puerta=1 dx=-35 dy=10 dz=60`
 - En error: `[<name>] ERR code=2`
 
 ## Ejecución con FreeRTOS
