@@ -51,7 +51,7 @@ int imu_update() {
 
 bool imu_new_data() { return nueva; }
 
-int imu_get_state(imu_data_t *out) {
+int imu_get_state(imu_data_t* out) {
   if (out == NULL) return FW_ERR_BAD_PARAM;
   if (!hay_dato) return FW_ERR_NO_DATA;
   *out = ultimo;

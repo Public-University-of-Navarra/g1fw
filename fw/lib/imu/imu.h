@@ -12,4 +12,4 @@ typedef struct {
 int imu_begin();                     // 0 = OK, si no, codigo de error. Una vez en setup()
 int imu_update();                    // en cada loop(); nunca espera. 0 tambien si no hay dato nuevo
 bool imu_new_data();                 // true si el ultimo imu_update() leyo un dato nuevo
-int imu_get_state(imu_data_t *out);  // copia el ultimo dato valido. FW_ERR_BAD_PARAM si out es NULL
+int imu_get_state(imu_data_t* out);  // copia el ultimo dato valido. FW_ERR_BAD_PARAM si out es NULL
