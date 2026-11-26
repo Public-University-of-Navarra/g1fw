@@ -9,12 +9,11 @@ constexpr uint8_t kGridRows = 4;
 constexpr uint8_t kGridCols = 4;
 constexpr uint16_t kMinValidMm = 20;
 constexpr uint16_t kMaxValidMm = 4000;
-constexpr uint32_t kFrameIntervalMs = 33;  //  ~30 Hz
+constexpr uint32_t kFrameIntervalMs = 33;  // ~30 Hz
 constexpr uint32_t kErrorEveryNFrames = 20;
 constexpr uint32_t kNoTargetEveryNFrames = 7;
 
-//  Patrón base de escena interior (mm): pasillo/pared frontal con variación por
-//  zona
+// Patrón base de escena interior (mm): pasillo/pared frontal con variación por zona
 constexpr int16_t kInteriorOffsetsMm[kGridRows][kGridCols] = {
     {220, 140, 140, 220},
     {120, 0, -25, 110},
@@ -52,10 +51,10 @@ void recompute_min_mm() {
 }
 
 void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
-    int32_t next_center = static_cast<int32_t>(g_center_dist_mm) + g_approach_step_mm;
+  int32_t next_center = static_cast<int32_t>(g_center_dist_mm) + g_approach_step_mm;
   if (next_center <= 260) {
     next_center = 260;
-        g_approach_step_mm = 60;  // Simula maniobra/evasión alejándose del obstáculo
+    g_approach_step_mm = 60;  // Simula maniobra/evasión alejándose del obstáculo
   } else if (next_center >= 1800) {
     next_center = 1800;
     g_approach_step_mm = -45;  // Vuelve a avanzar en espacio interior
@@ -64,8 +63,7 @@ void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
 
   for (uint8_t r = 0; r < kGridRows; ++r) {
     for (uint8_t c = 0; c < kGridCols; ++c) {
-      //  Simula una esquina superior sin retorno válido en rango (ej.
-      //  techo/reflejo)
+      // Simula una esquina superior sin retorno válido en rango (ej. techo/reflejo)
       if (r == 0 && c == 3 && (frame_num % kNoTargetEveryNFrames == 0)) {
         g_zones_mm[r][c] = TOF_FRONT_NO_TARGET;
         continue;
@@ -87,7 +85,7 @@ void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
   g_last_frame_ms = now_ms;
 }
 
-}  //  namespace
+}  // namespace
 
 int tof_front_begin() {
   uint32_t now_ms = millis();
