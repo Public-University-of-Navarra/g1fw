@@ -10,9 +10,11 @@ constexpr uint8_t kGridCols = 4;
 constexpr uint16_t kMinValidMm = 20;
 constexpr uint16_t kMaxValidMm = 4000;
 constexpr uint32_t kFrameIntervalMs = 33;  // ~30 Hz
-constexpr uint32_t kErrorEveryNCalls = 20;
+constexpr uint32_t kErrorEveryNFrames = 20;
+constexpr uint32_t kNoTargetEveryNFrames = 7;
 
-// Patrón base de escena interior (mm): pasillo/pared frontal con variación por zona
+// Patrón base de escena interior (mm): pasillo/pared frontal con variación por
+// zona
 constexpr int16_t kInteriorOffsetsMm[kGridRows][kGridCols] = {
     {220, 140, 140, 220},
     {120, 0, -25, 110},
@@ -24,7 +26,7 @@ bool g_initialized = false;
 bool g_has_valid_frame = false;
 bool g_new_data = false;
 
-uint32_t g_update_calls = 0;
+uint32_t g_frame_count = 0;
 uint32_t g_last_update_ms = 0;
 uint32_t g_last_frame_ms = 0;
 
@@ -32,7 +34,8 @@ uint16_t g_zones_mm[kGridRows][kGridCols] = {};
 uint16_t g_min_mm = TOF_FRONT_NO_TARGET;
 
 uint16_t g_center_dist_mm = 1500;
-int16_t g_approach_step_mm = -45;  // Acercamiento progresivo hacia obstáculo frontal
+int16_t g_approach_step_mm =
+    -45;  // Acercamiento progresivo hacia obstáculo frontal
 
 bool is_valid_distance_mm(uint16_t mm) {
   return mm >= kMinValidMm && mm <= kMaxValidMm;
@@ -51,11 +54,13 @@ void recompute_min_mm() {
   g_min_mm = current_min;
 }
 
-void generate_next_frame(uint32_t now_ms) {
-  int32_t next_center = static_cast<int32_t>(g_center_dist_mm) + g_approach_step_mm;
+void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
+  int32_t next_center =
+      static_cast<int32_t>(g_center_dist_mm) + g_approach_step_mm;
   if (next_center <= 260) {
     next_center = 260;
-    g_approach_step_mm = 60;  // Simula maniobra/evasión alejándose del obstáculo
+    g_approach_step_mm =
+        60;  // Simula maniobra/evasión alejándose del obstáculo
   } else if (next_center >= 1800) {
     next_center = 1800;
     g_approach_step_mm = -45;  // Vuelve a avanzar en espacio interior
@@ -64,13 +69,15 @@ void generate_next_frame(uint32_t now_ms) {
 
   for (uint8_t r = 0; r < kGridRows; ++r) {
     for (uint8_t c = 0; c < kGridCols; ++c) {
-      // Simula una esquina superior sin retorno válido en rango (ej. techo/reflejo)
-      if (r == 0 && c == 3 && (g_update_calls % 40 == 0)) {
+      // Simula una esquina superior sin retorno válido en rango (ej.
+      // techo/reflejo)
+      if (r == 0 && c == 3 && (frame_num % kNoTargetEveryNFrames == 0)) {
         g_zones_mm[r][c] = TOF_FRONT_NO_TARGET;
         continue;
       }
 
-      int32_t zone_mm = static_cast<int32_t>(g_center_dist_mm) + kInteriorOffsetsMm[r][c];
+      int32_t zone_mm =
+          static_cast<int32_t>(g_center_dist_mm) + kInteriorOffsetsMm[r][c];
       if (zone_mm < static_cast<int32_t>(kMinValidMm)) {
         zone_mm = kMinValidMm;
       } else if (zone_mm > static_cast<int32_t>(kMaxValidMm)) {
@@ -93,7 +100,7 @@ int tof_front_begin() {
   g_initialized = true;
   g_has_valid_frame = false;
   g_new_data = false;
-  g_update_calls = 0;
+  g_frame_count = 0;
   g_last_update_ms = now_ms;
   g_last_frame_ms = now_ms;
   g_min_mm = TOF_FRONT_NO_TARGET;
@@ -115,23 +122,22 @@ int tof_front_update() {
     return FW_ERR_NOT_INIT;
   }
 
-  ++g_update_calls;
-  if (g_update_calls % kErrorEveryNCalls == 0) {
-    return FW_ERR_TIMEOUT;
-  }
-
   uint32_t now_ms = millis();
   if ((now_ms - g_last_update_ms) >= kFrameIntervalMs || !g_has_valid_frame) {
     g_last_update_ms = now_ms;
-    generate_next_frame(now_ms);
+    ++g_frame_count;
+
+    if (g_frame_count % kErrorEveryNFrames == 0) {
+      return FW_ERR_TIMEOUT;
+    }
+
+    generate_next_frame(now_ms, g_frame_count);
   }
 
   return FW_ERR_OK;
 }
 
-bool tof_front_new_data() {
-  return g_new_data;
-}
+bool tof_front_new_data() { return g_new_data; }
 
 uint16_t tof_front_get_min_mm() {
   if (!g_initialized || !g_has_valid_frame) {
@@ -160,7 +166,7 @@ uint16_t tof_front_get_zone_mm(uint8_t row, uint8_t col) {
 
 uint32_t tof_front_get_age_ms() {
   if (!g_initialized || !g_has_valid_frame) {
-    return 0;
+    return UINT32_MAX;
   }
   return millis() - g_last_frame_ms;
 }
