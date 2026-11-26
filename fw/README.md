@@ -197,9 +197,40 @@ El resto de datos iria como se muestra en el siguiente ejemplo:
   -  `[camera] frame=1 w=320 h=240 bytes=76800` (ejemplo ilustrativo de un frame completo; dimensiones y tamaño reales según el formato recibido).
 - En error: `[<name>] ERR code=2`
 
+## Ejecución con FreeRTOS
+
+El firmware corre sobre FreeRTOS (el que trae el ESP32 con Arduino). El reparto sale del documento de sincronización del Grupo 1: el I2C es un solo bus compartido por cuatro sensores a través del multiplexor, y los sensores no tienen pines de interrupción conectados, así que el ESP32 tiene que preguntarles si tienen dato.
+
+| Tarea | Núcleo | Prioridad | Qué hace |
+|---|---|---|---|
+| `i2c` | 1 | 3 | La **única** que usa `Wire` y el multiplexor. Llama sin parar a `loop_tof_front()`, `loop_tof_inf()`, `loop_imu()`, `loop_bar()` y `loop_mult()`, en ese orden, y cede 1 ms en cada vuelta. |
+| `temp` | 0 | 1 | Llama a `loop_temp()` cada 50 ms. La sonda va por 1-Wire en su propio pin y no comparte bus con nadie. |
+| `loop()` de Arduino | 1 | 1 | `loop_camera()`, hasta que se cierre la interfaz de la cámara con el DSP. |
+
+Reglas que salen de este reparto:
+
+- **Una sola tarea en el I2C.** Como solo la tarea `i2c` toca el bus, `mult_select()` + transferencia nunca se mezclan con las de otro sensor y no hace falta mutex. Ninguna otra tarea puede llamar a funciones I2C.
+- **Cada componente se llama solo desde su tarea.** Sus `begin()` van en `setup()`, antes de crear las tareas; después, `update()` y los getters solo desde su tarea.
+- **`update()` sigue sin esperar.** Cada librería decide con `millis()` si le toca medir y, si no, vuelve. Así un sensor lento no retrasa a los ToF. No se usa `delay()` ni `vTaskDelay()` dentro de `fw/lib`.
+- **I2C a 400 kHz** (`Wire.setClock(400000)`, el máximo del TCA9548A).
+
+### Frecuencia de cada sensor
+
+Se mide más a menudo lo que importa para no chocar. Cada librería lleva su periodo como constante al inicio de su `.cpp`.
+
+| Componente | Periodo | Por qué |
+|---|---|---|
+| `tof_front` | 33 ms (30 Hz, 4x4 zonas) | Colisión frontal: lo más urgente |
+| `tof_inf` | 20 ms (50 Hz) | Colisión inferior y altura cerca del suelo |
+| `imu` | 10 ms (100 Hz) | Actitud del dron |
+| `bar` | 40 ms (25 Hz) | Altura; modo forzado, sin filtro IIR |
+| `temp` | 5 s | La temperatura cambia despacio; la conversión ya tarda 750 ms |
+
+La salida serie de cada componente se limita a una línea cada 100 ms como mucho, aunque lea más rápido; si no, a 115200 baudios el puerto se satura.
+
 ## Reglas
 
-- **No bloqueante:** sin `delay()`. Las esperas usan `millis()` y retornan. Solo se permiten esperas necesarias dentro de las funciones `*_begin()`, llamadas desde `setup()`. Cada `delay()` permitido debe llevar el comentario `// setup-only` en la misma línea, por ejemplo: `delay(10);  // setup-only`. El job `lint` de CI rechaza cualquier `delay(` en `fw/lib/` que no tenga esa marca.
+- **No bloqueante:** sin `delay()` ni `vTaskDelay()` en `fw/lib`. Las esperas usan `millis()` y retornan. Solo se permiten esperas necesarias dentro de las funciones `*_begin()`, llamadas desde `setup()`. Cada `delay()` permitido debe llevar el comentario `// setup-only` en la misma línea, por ejemplo: `delay(10);  // setup-only`. El job `lint` de CI rechaza cualquier `delay(` en `fw/lib/` que no tenga esa marca.
 - **Búferes acotados:** arrays de tamaño fijo; nunca se escribe más allá del final.
 - **Validar la entrada:** comprobar longitudes y valores antes de usar datos de un sensor.
 - **Solo tu carpeta:** cada pareja solo cambia `fw/lib/<name>/` y su hueco en `main.cpp`.
