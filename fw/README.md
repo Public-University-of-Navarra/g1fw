@@ -33,24 +33,26 @@ bool imu_new_data();                  // true si el último imu_update() leyó u
 int  imu_get_state(imu_data_t *out);  // copia en *out el último dato válido. FW_ERR_BAD_PARAM si out es NULL
 ```
 
-
 ### Altímetro (`bar`, BMP581)
 
 Librería ubicada en `fw/lib/bar/`. El sensor seleccionado es el SEN0667 (BMP581), conectado por I2C al canal 3 del multiplexor.
+
+El altímetro determinará la altura relativa respecto a una presión de referencia inicial fija, obtenida mediante la media de 30 mediciones.
+
+**API del altimetro:**
 
 ```cpp
 int bar_begin();
 int bar_update();
 float bar_get_height_m();
-float bar_get_pressure_hpa();
 bool bar_is_calibrated();
 ```
 
-- `bar_begin()`: inicializa el sensor, configura sus registros e inicia la calibración. Devuelve un código de estado.
-- `bar_update()`: obtiene la primera presión válida tras `bar_begin()` como referencia fija P0 (altura relativa de 0 m). A partir de entonces actualiza la presión y calcula la altura relativa respecto a P0, sin esperas bloqueantes. Devuelve un código de estado.
-- `bar_get_height_m()`: devuelve la última altura relativa válida en metros, o `NAN` si aún no está calibrado.
-- `bar_get_pressure_hpa()`: devuelve la última presión válida en hPa, o `NAN` si todavía no hay ninguna.
-- `bar_is_calibrated()`: devuelve `true` cuando se ha establecido P0 y `false` mientras la calibración está pendiente.
+- `bar_begin()`: inicializa el sensor, configura sus registros y comienza el proceso de calibración. Devuelve un código de estado.
+- `bar_update()`: gestiona la calibración inicial, obteniendo 30 muestras de presión separadas por intervalos de 100 ms sin utilizar esperas bloqueantes. Una vez completada la calibración, actualiza la presión y calcula la altura relativa respecto a la referencia inicial fija P0. Devuelve un código de estado.
+- `bar_get_height_m()`: devuelve la última altura relativa válida, expresada en metros, o `NAN` si todavía no se ha completado la calibración.
+- `bar_is_calibrated()`: devuelve `true` cuando se ha establecido la presión de referencia P0 y `false` mientras la calibración está pendiente.
+
 
 ### Colisión frontal VL53L5CX `tof_front`
 
