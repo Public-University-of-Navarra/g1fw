@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define TOF_FRONT_NO_TARGET 0xFFFF  // marcador de "nada en rango"
+#define TOF_FRONT_NO_TARGET 0xFFFF // marcador de "nada en rango"
 
 #ifdef __cplusplus
 extern "C" {

@@ -9,7 +9,7 @@ constexpr uint8_t kGridRows = 4;
 constexpr uint8_t kGridCols = 4;
 constexpr uint16_t kMinValidMm = 20;
 constexpr uint16_t kMaxValidMm = 4000;
-constexpr uint32_t kFrameIntervalMs = 33;  // ~30 Hz
+constexpr uint32_t kFrameIntervalMs = 33; // ~30 Hz
 constexpr uint32_t kErrorEveryNFrames = 20;
 constexpr uint32_t kNoTargetEveryNFrames = 7;
 
@@ -35,7 +35,7 @@ uint16_t g_min_mm = TOF_FRONT_NO_TARGET;
 
 uint16_t g_center_dist_mm = 1500;
 int16_t g_approach_step_mm =
-    -45;  // Acercamiento progresivo hacia obstáculo frontal
+    -45; // Acercamiento progresivo hacia obstáculo frontal
 
 bool is_valid_distance_mm(uint16_t mm) {
   return mm >= kMinValidMm && mm <= kMaxValidMm;
@@ -59,11 +59,10 @@ void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
       static_cast<int32_t>(g_center_dist_mm) + g_approach_step_mm;
   if (next_center <= 260) {
     next_center = 260;
-    g_approach_step_mm =
-        60;  // Simula maniobra/evasión alejándose del obstáculo
+    g_approach_step_mm = 60; // Simula maniobra/evasión alejándose del obstáculo
   } else if (next_center >= 1800) {
     next_center = 1800;
-    g_approach_step_mm = -45;  // Vuelve a avanzar en espacio interior
+    g_approach_step_mm = -45; // Vuelve a avanzar en espacio interior
   }
   g_center_dist_mm = static_cast<uint16_t>(next_center);
 
@@ -93,7 +92,7 @@ void generate_next_frame(uint32_t now_ms, uint32_t frame_num) {
   g_last_frame_ms = now_ms;
 }
 
-}  // namespace
+} // namespace
 
 int tof_front_begin() {
   uint32_t now_ms = millis();

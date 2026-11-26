@@ -24,12 +24,12 @@ static void setup_tof_front() {
 static void loop_tof_front() {
   int err = tof_front_update();
   if (err != FW_ERR_OK) {
-    return;  // FW_ERR_TIMEOUT es normal, ver nota abajo
+    return; // FW_ERR_TIMEOUT es normal, ver nota abajo
   }
 
   if (tof_front_new_data()) {
     uint16_t min_mm = tof_front_get_min_mm();
-    bool obstacle   = tof_front_obstacle(300);  // umbral en mm
+    bool obstacle = tof_front_obstacle(300); // umbral en mm
     // aquí usas min_mm / obstacle (o tof_front_get_zone_mm(r, c))
   }
 }
@@ -59,7 +59,7 @@ void setup() {
   setup_temp();
   setup_camera();
   // ...
-  Serial.println("FPF-LAB READY");  // must be the LAST line of setup()
+  Serial.println("FPF-LAB READY"); // must be the LAST line of setup()
 }
 
 void loop() {
