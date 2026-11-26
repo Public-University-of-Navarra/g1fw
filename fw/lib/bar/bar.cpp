@@ -51,11 +51,6 @@ int bar_update() {
 }
 
 // Obtener la ultima altura valida
-float bar_get_height_m() {
-  return altura;
-}
+float bar_get_height_m() { return altura; }
 
-// Estado de calibracion
-bool bar_is_calibrated() {
-  return calibrado;
-}
+bool bar_is_calibrated() { return calibrado; }
