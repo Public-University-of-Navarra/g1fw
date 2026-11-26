@@ -5,8 +5,8 @@
 
 static void setup_i2c() {
   Wire.begin(33, 32);
-  // Llama aquí a la inicialización de tu multiplexor, por ejemplo:
-  // mux.begin();
+  //  Llama aquí a la inicialización de tu multiplexor, por ejemplo:
+  //  mux.begin();
 }
 static void setup_mult() {}
 static void loop_mult() {}
@@ -14,25 +14,8 @@ static void loop_mult() {}
 static void setup_imu() {}
 static void loop_imu() {}
 
-static void setup_tof_front() {
-  int err = tof_front_begin();
-  if (err != FW_ERR_OK) {
-    Serial.printf("tof_front begin error: %d\n", err);
-  }
-}
-
-static void loop_tof_front() {
-  int err = tof_front_update();
-  if (err != FW_ERR_OK) {
-    return;  // FW_ERR_TIMEOUT es normal, ver nota abajo
-  }
-
-  if (tof_front_new_data()) {
-    uint16_t min_mm = tof_front_get_min_mm();
-    bool obstacle = tof_front_obstacle(300);  // umbral en mm
-    // aquí usas min_mm / obstacle (o tof_front_get_zone_mm(r, c))
-  }
-}
+static void setup_tof_front() { tof_front_begin(); }
+static void loop_tof_front() { tof_front_update(); }
 
 static void setup_tof_inf() {}
 static void loop_tof_inf() {}
