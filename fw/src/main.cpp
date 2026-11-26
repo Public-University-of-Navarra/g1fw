@@ -1,13 +1,13 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <fw_errors.h>
+#include <mult.h>
 
-static void setup_i2c() {
-  Wire.begin(33, 32);
-  // Llama aquí a la inicialización de tu multiplexor, por ejemplo:
-  // mux.begin();
+static void setup_i2c() { Wire.begin(33, 32); }
+static void setup_mult() {
+  const int err = mult_begin();
+  if (err != FW_ERR_OK) Serial.printf("[mult] ERR code=%d\n", err);
 }
-static void setup_mult() {}
 static void loop_mult() {}
 
 static void setup_imu() {}
