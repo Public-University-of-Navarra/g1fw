@@ -1,11 +1,12 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <fw_errors.h>
+#include <tof_front.h>
 
 static void setup_i2c() {
   Wire.begin(33, 32);
-  // Llama aquí a la inicialización de tu multiplexor, por ejemplo:
-  // mux.begin();
+  //  Llama aquí a la inicialización de tu multiplexor, por ejemplo:
+  //  mux.begin();
 }
 static void setup_mult() {}
 static void loop_mult() {}
@@ -13,8 +14,8 @@ static void loop_mult() {}
 static void setup_imu() {}
 static void loop_imu() {}
 
-static void setup_tof_front() {}
-static void loop_tof_front() {}
+static void setup_tof_front() { tof_front_begin(); }
+static void loop_tof_front() { tof_front_update(); }
 
 static void setup_tof_inf() {}
 static void loop_tof_inf() {}
